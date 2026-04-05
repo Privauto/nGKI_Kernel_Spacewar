@@ -93,7 +93,7 @@ jobs:
   build-kernel:
     name: Nothing Phone (1) (LineageOS 23.0 A16)
     runs-on: ubuntu-latest # u can changed to ubuntu 22.04, and need container set ubuntu-latest
-    container: debian:jessie
+    # container: debian:jessie
     env:
       CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
       CCACHE_NOHASHDIR: "true"
