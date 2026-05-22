@@ -1,0 +1,174 @@
+name: build-redmi-10x5g-miui-a12-atom
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+env:
+  # Device env
+  #设备全称，格式：设备品牌_型号(_地区)
+  DEVICE_NAME : "redmi-10x5g"
+  #设备代号
+  DEVICE_CODENAME : "atom"
+
+  CUSTOM_CMDS : "CROSS_COMPILE=aarch64-linux-gnu- CLANG_TRIPLE=aarch64-linux-gnu-"
+  EXTRA_CMDS : "LLVM=1 LLVM_IAS=1"
+
+  #内核源码的网址
+  KERNEL_SOURCE : "https://gitee.com/redmi10-x_-kernel/kernel-smf.git"
+  #内核源码所在分支
+  KERNEL_BRANCH : "master"
+
+  CLANG_SOURCE : "https://github.com/cyberc3dr/clang_mirror/releases/download/clang-r547379/clang-r547379.tar.gz"
+  CLANG_BRANCH : ""
+
+  #若你的内核需要GCC，但不需要自定义GCC，可通过GCC_GNU选项启用系统提供的GNU-GCC
+  GCC_GNU : false
+  GCC_64_SOURCE : "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9.git"
+  GCC_64_BRANCH : "android12L-release"
+  GCC_32_SOURCE : "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9.git"
+  GCC_32_BRANCH : "android12L-release"
+
+  #若有自定义defconfig文件需求可提供Defconfig文件的下载地址,默认为空
+  #不管是否自定义，都需要提供用于编译的必要defconfig文件，通常格式为：设备_defconfig、vendor/设备_defconfig
+  DEFCONFIG_SOURCE: ""
+  #当DEFCONFIG_FROM_BOOT为true时，则不用填
+  DEFCONFIG_NAME : "atom_user_defconfig"
+  #如果你在选择构建配置文件的时候采用了 “从设备中提取” 的方法，你需要把 boot 镜像文件上传到项目，然后填写下载 boot 镜像的网址
+  DEFCONFIG_ORIGIN_IMAGE: ""
+  #是否从“从设备中提取”，默认false
+  DEFCONFIG_FROM_BOOT: false
+
+  #KERNELSU_AUTO_GET为true时，不填
+  KERNELSU_SOURCE : ""
+  #KERNELSU_AUTO_GET为true时，不填
+  KERNELSU_BRANCH : ""
+
+  #自动设定KernelSU的来源
+  KERNELSU_AUTO_GET : "true" # if u want easy setting kernelsu, u can true.
+  #选择以下来源以自动设定KernelSU的来源
+  #[magic - 由 反斜杠大佬 维护的分支]
+  #[rsuntk - 由 rsuntk 维护的分支]
+  #[sukisu - 由 SukiSU-Ultra 维护的分支]
+  #[next - 由 KernelSU-Next 维护的分支]
+  #[wild - 由 WildKernels 维护的分支]
+  KERNELSU_AUTO_FORK : "resukisu" # magic, rsuntk, next, resukisu and sukisu
+
+  #是否在编译时启用 SUSFS 建议设置为 true
+  SUSFS_ENABLE : false
+  #是否启用SUSFS错误修补，一般用于内核修补时产生错误后，二次补充修补。
+  #若该项为true，并且PATCHES_SOURCE和PATCHES_BRANCH不正确，则会导致错误
+  #由于nongki的碎片化，修补不能保证一次性通过，susfs的补丁经常打不进去，可能需要自行制作用于二次修补的补丁
+  SUSFS_FIXED : false
+
+  #Anykernel3一般无需修改
+  AK3_SOURCE : "https://github.com/osm0sis/AnyKernel3.git"
+  AK3_BRANCH : "master"
+
+  #若你已经启用MKBOOTIMG的方式，要填写原始干净内核的地址，仅限img格式
+  #一般不用填写，因为我们已经使用anykernel3打包内核了
+  BOOT_SOURCE : ""
+
+  NEED_DTBO : false
+  NEED_SAFE_DTBO : false
+
+  #用于编译成功后用于上传文件的标题，声明兼容的 ROM。
+  #格式：System_(Android_version_number).
+  ROM_TEXT : "android_12"
+
+  # Other env
+  PYTHON_VERSION: "3" # Only 2(Ubuntu 22.04 and Ubuntu 20.04) or 3(Any OS Versions).
+
+  PACK_METHOD: "Anykernel3" # Anykernel3 need SOURCE and BRANCH, MKBOOTIMG needn't it.
+  PACK_KMODULES: "false" # if u want pack kernel modules (.ko) into Anykernel3.
+
+  KERNELSU_METHOD: "shell" # shell, manual and only.
+
+  #使用susfs不可避免需要手动修补，这是用来填写你存放patch的github项目地址，需要按格式填写你的项目地址 → gooder123/NonGKI_Patcher 。当然如果你不采用susfs，则不需要填写。
+  PATCHES_SOURCE: "" # [your_name]/[your_patch] -> gooder123/NonGKI_Patcher
+  PATCHES_BRANCH: "" # [your_branch] -> main
+
+  #项目中存放补丁的子目录。如果没有子目录，请留空。
+  SUSFS_FOLDER_FIXED: "" # Fill in your patch prefix directory here. Leave it blank if there isn't one. -> your_folder
+  SUSFS_PATCH_FIXED: "" # Fill in your patches here. If there are multiple patches, please separate them with a comma. Leave it blank if there isn't one. -> patch1,patch2
+
+  REKERNEL_ENABLE: "false" # if u need Re:Kernel.
+
+  #我们提供了两种方式用于KernelSU手动修补： normal和syscall
+  HOOK_METHOD: "syscall" # Manual hook method -> syscall.
+
+  KERNEL_PATCH: "false" # If your kernel version is <= 4.9, you have the option of enabling the patch to patch the kernel_write and kernel_read functions.
+
+  KPM_ENABLE: "false" # Anyone devices.
+  KPM_INLINE: "false" # Only use it for SukiSU-Ultra.
+  KPM_KPATCH_NEXT: "false" # If u want hook KPatch-Next in build step.
+  KPM_PATCH_SOURCE: "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU_patch/refs/heads/main/kpm/patch_linux" # If u want to use KPM Inline,so you need set patch exec file source -> raw.githubusercontent.com/Test/Test/patch .
+
+  BASEBAND_GUARD_ENABLE: "false" #if u want prevent unauthorized writes to critical partitions/device nodes.
+  BASEBAND_GUARD_BOOT: "false" #if u want to protect boot partition.
+
+  HIDE_STUFF: "false" # hide some of the features
+
+  GENERATE_DTB: "false" # if u kernel need DTB , but cannot auto generate it. (Only Anykernel3).
+  GENERATE_CHIP: "qcom" # only supported for qcom and mediatek.
+
+  BUILD_DEBUGGER: "false" # Output build errors.
+  SKIP_PATCH: "false" # Ignore errors found in Patch Debugger.
+
+  BUILD_OTHER_CONFIG: "false" # Merge config files.
+  MERGE_CONFIG_FILES: "vendor/debugfs.config,vendor/lahaina_QGKI.config"
+
+  FREE_MORE_SPACE: "false" # if u want get more space, enabled it.
+
+jobs:
+  build-kernel:
+    name: Build redmi-10x5g-miui-a12-atom
+    runs-on: ubuntu-latest # u can changed to ubuntu 22.04, and need container set ubuntu-latest
+    # container: ubuntu-latest
+    # container: archlinux/archlinux:latest # if u need use arch linux -> archlinux/archlinux:latest or ubuntu 20.04 -> ubuntu:focal
+    env:
+      CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
+      CCACHE_NOHASHDIR: "true"
+      CCACHE_HARDLINK: "true"
+
+    steps:
+      - name: ⏰ Checkout repository
+        uses: actions/checkout@v6
+
+      - name: ⌛️ Compilation environment preparation
+        uses: ./.github/workflows/build-env
+
+      - name: ⚙️ Get neccssary tools
+        uses: ./.github/workflows/build-ready
+
+      - name: 🪝 Patch Kernel of SUSFS
+        uses: ./.github/workflows/patch-susfs
+
+      - name: 🔗 Patch for no-kprobe
+        uses: ./.github/workflows/patch-no-kprobe
+
+      - name: 🪛 Extra Kernel Options
+        run: |
+          # Only ${{ env.DEVICE_NAME }} use it.
+          cd $GITHUB_WORKSPACE/device_kernel
+          # Clang 21 compatibility
+          # sed -i '/hif_err("CE handle is null");/{n;s/return A_ERROR;/return QDF_STATUS_E_NULL_VALUE;/;}' drivers/staging/qca-wifi-host-cmn/hif/src/ce/ce_main.c
+
+      - name: 🧰 Patch Kernel of Re:Kernel
+        uses: ./.github/workflows/patch-rekernel
+
+      - name: 🔒 Patch Kernel of Baseband Guard
+        uses: ./.github/workflows/patch-baseband-guard
+
+      - name: 🔧 Patch Hide Stuff
+        uses: ./.github/workflows/patch-hide-stuff
+
+      - name: 🚀 Build Process
+        uses: ./.github/workflows/build-process
+
+      - name: 🔩 Pack Process
+        uses: ./.github/workflows/pack-process
+
+      - name: ✏️ Upload Artifacts
+
+        uses: ./.github/workflows/upload-files
