@@ -33,12 +33,13 @@ runs:
       run: |
         cd $GITHUB_WORKSPACE/device_kernel/
         
-        if [ -f scripts/clang-android.sh ]; then
-          chmod +x scripts/clang-android.sh
-          echo "Fixed permission for scripts/clang-android.sh"
-        else
-          echo "Warning: scripts/clang-android.sh not found"
-        fi
+        # Fix all known script permissions
+        echo "Fixing script permissions..."
+        chmod +x scripts/clang-android.sh 2>/dev/null || true
+        chmod +x scripts/config 2>/dev/null || true
+        chmod +x scripts/ld-version.sh 2>/dev/null || true
+        chmod +x tools/dct/DrvGen.py 2>/dev/null || true
+        echo "Permissions fixed."
         
         # Function
         BUILD_PROCESS(){
@@ -91,7 +92,6 @@ runs:
           echo "====================================================="
           echo "Disabling CONFIG_CC_STACKPROTECTOR_STRONG due to compiler limitation"
           echo "====================================================="
-          chmod +x scripts/config
           scripts/config --file out/.config --disable CC_STACKPROTECTOR_STRONG
           make O=out ARCH="${{ env.KERNEL_ARCH }}" olddefconfig
         fi
