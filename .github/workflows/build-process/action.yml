@@ -33,6 +33,13 @@ runs:
         run: |
           cd $GITHUB_WORKSPACE/device_kernel/
 
+          if [ -f scripts/clang-android.sh ]; then
+            chmod +x scripts/clang-android.sh
+            echo "Fixed permission for scripts/clang-android.sh"
+          else
+            echo "Warning: scripts/clang-android.sh not found"
+          fi
+
           # Function
           BUILD_PROCESS(){
           if [ -n "$1" ]; then
