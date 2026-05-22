@@ -12,7 +12,7 @@ runs:
         ${{ env.CURLX }} https://android.googlesource.com/platform/system/libufdt/+archive/refs/heads/main/utils/src.tar.gz src.tar.gz
         tar zxvf src.tar.gz
         rm -f src.tar.gz
-        
+
         # Hook dtbo generate code to kernel
         cd $GITHUB_WORKSPACE/device_kernel
         sed -i '/targets := Image Image.bz2 Image.gz Image.lz4 Image.lzma Image.lzo/s/$/ dtbo.img/' ./arch/arm64/boot/Makefile
@@ -32,28 +32,34 @@ runs:
       shell: bash
       run: |
         cd $GITHUB_WORKSPACE/device_kernel/
-        
-        # Fix script permissions and shebangs
-        echo "Fixing script permissions and shebangs..."
-        
-        # Make all .sh and .py files executable
+
+        # ========== 修复权限 + 转换 Python 2 代码 ==========
+        echo "Fixing script permissions and converting Python 2 to 3..."
+
+        # 1. 给所有脚本加执行权限
         find . -type f \( -name "*.sh" -o -name "*.py" \) -exec chmod +x {} \; 2>/dev/null || true
-        
-        # Specifically fix DrvGen.py shebang (use python3)
+
+        # 2. 转换 DrvGen.py 从 Python 2 到 Python 3
         if [ -f tools/dct/DrvGen.py ]; then
-          # Remove any existing shebang and add correct one
+          echo "Converting tools/dct/DrvGen.py to Python 3..."
+          # 备份原文件
+          cp tools/dct/DrvGen.py tools/dct/DrvGen.py.bak
+          # 使用 2to3 自动转换 (只转换此文件，防止影响其他)
+          2to3 -w -n tools/dct/DrvGen.py >/dev/null 2>&1 || true
+          # 修正 shebang
           sed -i '1s|^#!.*|#!/usr/bin/env python3|' tools/dct/DrvGen.py
           chmod +x tools/dct/DrvGen.py
-          echo "Fixed DrvGen.py shebang to use python3"
+          echo "DrvGen.py converted."
         fi
-        
-        # Ensure other critical scripts are executable
+
+        # 3. 确保其他关键脚本可执行
         chmod +x scripts/ld-version.sh 2>/dev/null || true
         chmod +x scripts/clang-android.sh 2>/dev/null || true
         chmod +x scripts/config 2>/dev/null || true
-        
-        echo "Permissions fixed."
-        
+
+        echo "All permissions fixed and Python scripts updated."
+        # ==============================================
+
         # Function
         BUILD_PROCESS(){
         if [ -n "$1" ]; then
@@ -62,11 +68,11 @@ runs:
         else
           BUILD_CLANG=""
         fi
-        
+
         if [ -n "${{ env.CLANG_SOURCE }}" ]; then
           export PATH=$GITHUB_WORKSPACE/clang-custom/bin:$PATH
         fi
-        
+
         if [[ "$BUILD_CLANG" == "true" ]]; then
           echo "========================"
           echo "=Read Defconfig (Clang)="
@@ -78,7 +84,7 @@ runs:
           echo "================"
           make O=out ARCH="${{ env.KERNEL_ARCH }}" ${{ env.DEFCONFIG_NAME }}
         fi
-        
+
         if [[ "${{ env.BUILD_OTHER_CONFIG }}"  == "true" ]]; then
           echo "================="
           echo "=Merge Config(s)="
@@ -99,7 +105,7 @@ runs:
               make O=out ARCH="${{ env.KERNEL_ARCH }}" olddefconfig
           fi
         fi
-        
+
         # Disable stack protector for Clang builds after all configs are ready
         if [[ "$BUILD_CLANG" == "true" ]] && [ -f out/.config ]; then
           echo "====================================================="
@@ -108,7 +114,7 @@ runs:
           scripts/config --file out/.config --disable CC_STACKPROTECTOR_STRONG
           make O=out ARCH="${{ env.KERNEL_ARCH }}" olddefconfig
         fi
-        
+
         # KPM Detect
         if [[ "${{ env.KPM_ENABLE }}" == "true" ]] && [[ "${{ env.KPM_INLINE }}" == "true" ]]; then
           if grep -q "CONFIG_KALLSYMS_ALL=y" "out/.config"; then
@@ -117,39 +123,39 @@ runs:
           else
               echo "[-] Your didn't enabled KALLSYMS_ALL."
           fi
-        
+
           if grep -q "CONFIG_KPM=y" "out/.config"; then
               echo "[+] Detected KPM."
           else
               echo "[-] Could not detect KPM."
           fi
         fi
-        
+
         if [[ "$BUILD_CLANG" == "true" ]]; then
           echo "======================"
           echo "=Execuate Clang Build="
           echo "======================"
-        
+
           if [[ "${{ env.BASEBAND_GUARD_ENABLE }}" == "true" ]]; then
               make -j$(nproc --all) CC="ccache clang" ${{ env.CUSTOM_CMDS }} ${{ env.EXTRA_CMDS }} O=out ARCH="${{ env.KERNEL_ARCH }}" security/selinux/
               echo "[+] Pre-built SELinux done."
           fi
-        
+
           make -j$(nproc --all) CC="ccache clang" ${{ env.CUSTOM_CMDS }} ${{ env.EXTRA_CMDS }} O=out ARCH="${{ env.KERNEL_ARCH }}" 2>&1|tee error.log
         else
           echo "===================="
           echo "=Execuate GCC Build="
           echo "===================="
-        
+
           if [[ "${{ env.BASEBAND_GUARD_ENABLE }}" == "true" ]]; then
               make -j$(nproc --all) O=out ARCH="${{ env.KERNEL_ARCH }}" security/selinux/
               echo "[+] Pre-built SELinux done."
           fi
-        
+
           make -j$(nproc --all) O=out ARCH="${{ env.KERNEL_ARCH }}" 2>&1|tee error.log
         fi
         }
-        
+
         # Core
         if [ -n "${{ env.CLANG_SOURCE }}" ]; then
           if [ -n "${{ env.GCC_64 }}" ] && [ -n "${{ env.GCC_32 }}" ]; then
@@ -178,7 +184,7 @@ runs:
               echo "====================="
               BUILD_PROCESS true
           fi
-        
+
         elif [ "${{ env.KERNEL_ARCH }}" == "arm64" ]; then
           if [ -n "${{ env.GCC_64 }}" ] && [ -n "${{ env.GCC_32 }}" ]; then
               echo "=================================="
@@ -201,7 +207,7 @@ runs:
               export "${{ env.GCC_64 }}"
               BUILD_PROCESS
           fi
-        
+
         elif [ "${{ env.KERNEL_ARCH }}" == "arm" ]; then
           if [ "${{ env.GNU_GCC }}" == "true" ]; then
               echo "======================"
@@ -216,7 +222,7 @@ runs:
               export "${{ env.GCC_32 }}"
               BUILD_PROCESS
           fi
-        
+
         else
           echo "invaild kernel arch, stop."
           false
@@ -233,9 +239,9 @@ runs:
         tar zxvf mkdtboimg.tar.gz
         cd ../
         if [ -d "$GITHUB_WORKSPACE/device_kernel/out/arch/arm64/boot/dts/vendor" ]; then
-          python dtbo_tool/src/mkdtboimg.py create $GITHUB_WORKSPACE/device_kernel/out/arch/arm64/boot/dtbo.img $GITHUB_WORKSPACE/device_kernel/out/arch/arm64/boot/dts/vendor/${{ env.GENERATE_CHIP }}/*.dtbo
+          python3 dtbo_tool/src/mkdtboimg.py create $GITHUB_WORKSPACE/device_kernel/out/arch/arm64/boot/dtbo.img $GITHUB_WORKSPACE/device_kernel/out/arch/arm64/boot/dts/vendor/${{ env.GENERATE_CHIP }}/*.dtbo
         else
-          python dtbo_tool/src/mkdtboimg.py create $GITHUB_WORKSPACE/device_kernel/out/arch/arm64/boot/dtbo.img $GITHUB_WORKSPACE/device_kernel/out/arch/arm64/boot/dts/${{ env.GENERATE_CHIP }}/*.dtbo
+          python3 dtbo_tool/src/mkdtboimg.py create $GITHUB_WORKSPACE/device_kernel/out/arch/arm64/boot/dtbo.img $GITHUB_WORKSPACE/device_kernel/out/arch/arm64/boot/dts/${{ env.GENERATE_CHIP }}/*.dtbo
         fi
 
     - name: Analyze compile error
@@ -243,10 +249,10 @@ runs:
       shell: bash
       run: |
         cd $GITHUB_WORKSPACE/device_kernel/
-        
+
         cp /tmp/Bin/check_error.sh ./
         cp /tmp/Bin/pack_error_files.sh ./
-        
+
         bash check_error.sh
         bash pack_error_files.sh
 
@@ -256,7 +262,7 @@ runs:
       run: |
         cd $GITHUB_WORKSPACE/device_kernel/
         IMAGE_DIR="$GITHUB_WORKSPACE/device_kernel/out/arch/arm64/boot"
-        
+
         if [[ -f "$IMAGE_DIR/Image.gz-dtb" ]]; then
             MODE="gz-dtb"
         elif [[ -f "$IMAGE_DIR/Image.gz" ]]; then
@@ -267,7 +273,7 @@ runs:
             echo "No valid Image file found."
             exit 1
         fi
-        
+
         case "$MODE" in
           gz-dtb)
             if [ -f "include/linux/set_memory.h" ]; then
@@ -276,7 +282,7 @@ runs:
                 else
                   IMAGE_DIR="$GITHUB_WORKSPACE/device_kernel/out/arch/arm/boot"
                 fi
-        
+
                 if ls $IMAGE_DIR/dts/${{ env.GENERATE_CHIP }}/*.dtb 1> /dev/null 2>&1; then
                     DTB_PATH="dts"
                 elif ls $IMAGE_DIR/dts/vendor/${{ env.GENERATE_CHIP }}/*.dtb 1> /dev/null 2>&1; then
@@ -285,24 +291,24 @@ runs:
                     echo "Not found dts, abort."
                     false
                 fi
-        
+
                 rm -f "$IMAGE_DIR/Image.gz-dtb" "$IMAGE_DIR/Image.gz"
-        
+
                 if [[ "${{ env.KPM_INLINE }}" == "true" ]]; then
                   cp patch "$IMAGE_DIR/"
                 else
                   cp kpimg-linux "$IMAGE_DIR/"
                   cp kptools-linux "$IMAGE_DIR/"
                 fi
-        
+
                 cd "$IMAGE_DIR/" || exit 1
-        
+
                 if [[ "${{ env.KPM_INLINE }}" == "true" ]]; then
                   ./patch
                 else
                   ./kptools-linux -p -k kptools-linux -i Image -o oImage
                 fi
-        
+
                 rm -f Image
                 mv oImage Image
                 gzip -c Image > Image.gz
@@ -314,44 +320,44 @@ runs:
             ;;
           gz)
             rm -f "$IMAGE_DIR/Image.gz"
-        
+
             if [[ "${{ env.KPM_INLINE }}" == "true" ]]; then
               cp patch "$IMAGE_DIR/"
             else
               cp kpimg-linux "$IMAGE_DIR/"
               cp kptools-linux "$IMAGE_DIR/"
             fi
-        
+
             cd "$IMAGE_DIR/" || exit 1
-        
+
             if [[ "${{ env.KPM_INLINE }}" == "true" ]]; then
               ./patch
             else
               ./kptools-linux -p -k kptools-linux -i Image -o oImage
             fi
-        
+
             rm -f Image
             mv oImage Image
             gzip -c Image > Image.gz
             echo "Hook Image successfully !"
             ;;
           plain)
-        
+
             if [[ "${{ env.KPM_INLINE }}" == "true" ]]; then
               cp patch "$IMAGE_DIR/"
             else
               cp kpimg-linux "$IMAGE_DIR/"
               cp kptools-linux "$IMAGE_DIR/"
             fi
-        
+
             cd "$IMAGE_DIR/" || exit 1
-        
+
             if [[ "${{ env.KPM_INLINE }}" == "true" ]]; then
               ./patch
             else
               ./kptools-linux -p -k kptools-linux -i Image -o oImage
             fi
-        
+
             mv oImage Image
             echo "Hook Image successfully !"
             ;;
