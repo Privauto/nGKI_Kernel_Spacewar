@@ -57,6 +57,12 @@ runs:
             echo "========================"
             echo "=Read Defconfig (Clang)="
             echo "========================"
+          
+            echo "Disabling CONFIG_CC_STACKPROTECTOR_STRONG due to compiler compatibility"
+            chmod +x scripts/config
+            scripts/config --file out/.config --disable CC_STACKPROTECTOR_STRONG
+            make O=out ARCH=arm64 olddefconfig
+          
             make CC="ccache clang" O=out ARCH="${{ env.KERNEL_ARCH }}" ${{ env.CUSTOM_CMDS }} ${{ env.EXTRA_CMDS }} ${{ env.DEFCONFIG_NAME }}
           else
             echo "================"
