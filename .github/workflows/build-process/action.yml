@@ -33,21 +33,25 @@ runs:
       run: |
         cd $GITHUB_WORKSPACE/device_kernel/
         
-        # Fix all script permissions recursively (including .sh and .py)
-        echo "Fixing all script permissions recursively..."
+        # Fix script permissions and shebangs
+        echo "Fixing script permissions and shebangs..."
+        
+        # Make all .sh and .py files executable
         find . -type f \( -name "*.sh" -o -name "*.py" \) -exec chmod +x {} \; 2>/dev/null || true
-        # Explicitly ensure DrvGen.py is executable and has correct shebang
+        
+        # Specifically fix DrvGen.py shebang (use python3)
         if [ -f tools/dct/DrvGen.py ]; then
+          # Remove any existing shebang and add correct one
+          sed -i '1s|^#!.*|#!/usr/bin/env python3|' tools/dct/DrvGen.py
           chmod +x tools/dct/DrvGen.py
-          # Ensure shebang uses python3
-          if ! head -1 tools/dct/DrvGen.py | grep -qE '^#!.*python'; then
-            sed -i '1i#!/usr/bin/env python3' tools/dct/DrvGen.py
-          fi
+          echo "Fixed DrvGen.py shebang to use python3"
         fi
+        
         # Ensure other critical scripts are executable
         chmod +x scripts/ld-version.sh 2>/dev/null || true
         chmod +x scripts/clang-android.sh 2>/dev/null || true
         chmod +x scripts/config 2>/dev/null || true
+        
         echo "Permissions fixed."
         
         # Function
